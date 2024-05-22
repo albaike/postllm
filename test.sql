@@ -1,111 +1,54 @@
-create schema postxml_test;
+create schema postllm_test;
 
-create function postxml_test.test_xsd_fail()
+-- set log_min_messages to debug1;
+
+create function postllm_test.test_prompt_fails_on_model_file_missing()
 returns void as $$
 begin
-    perform postxml.xsl_transform(
-        postxml.read_text('/tmp/fail.xsd')::xml,
-        postxml.read_text('/tmp/fail.xsd')::xml
+    perform postllm.prompt(
+        '/bad/model/filename',
+        'EXAMPLE PROMPT'
     );
 
-    raise exception 'XSD failure not raised.';
+    raise exception 'Prompt fail not raised.';
 exception
     when others then return;
 end;
 $$ language plpgsql;
 
-create function postxml_test.test_xsd()
-returns void as $$
-begin
-    if not postxml.xsd_validate(
-        postxml.read_text('/tmp/XMLSchema-10.xsd')::xml,
-        postxml.read_text('/tmp/XMLSchema-10.xsd')::xml
-    ) then
-        raise exception 'XMLSchema 1.0 not valid against itself';
-    end if;
-
-    perform postxml_test.test_xsd_fail();
-    return;
-end;
-$$ language plpgsql;
-
-
-create function postxml_test.test_xsl_fail()
-returns void as $$
-begin
-    perform postxml.xsl_transform(
-        postxml.read_text('/tmp/fail.xsl')::xml,
-        postxml.read_text('/tmp/fail.xsl')::xml
-    );
-
-    raise exception 'XSLT failure not raised.';
-exception
-    when others then return;
-end;
-$$ language plpgsql;
-
-create function postxml_test.test_xsl()
+create function postllm_test.test_prompt_doesnt_output_empty()
 returns void as $$
 declare
-    xslt_10_ex_d1 xml;
-    xslt_10_ex_d2_html xml;
-    xslt_10_ex_d2_svg xml;
+    prompt_result text;
 begin
-    select postxml.xsl_transform(
-        postxml.read_text('/tmp/xslt-10-ex-d1.xsl')::xml,
-        postxml.read_text('/tmp/xslt-10-ex-d1.xml')::xml
-    ) into xslt_10_ex_d1;
-    if not postxml.xml_docs_equal(
-        xslt_10_ex_d1,
-        postxml.read_text('/tmp/xslt-10-ex-d1.xhtml')::xml
-    ) then
-        raise exception 'Invalid transform for XSLT1.0 Example D.1: %', xslt_10_ex_d1;
-    end if;
+    select postllm.prompt(
+        '/tmp/gemma-1.1-7b-it.Q2_K.gguf',
+        'Print the exact text: "SAMPLE TEXT". Do not include the quotation marks or any other text, simply print the enclosed text.\n'
+    ) into prompt_result;
 
-    select postxml.xsl_transform(
-        postxml.read_text('/tmp/xslt-10-ex-d2-html.xsl')::xml,
-        postxml.read_text('/tmp/xslt-10-ex-d2-in.xml')::xml
-    ) into xslt_10_ex_d2_html;
-    if not postxml.xml_docs_equal(
-        xslt_10_ex_d2_html,
-        postxml.read_text('/tmp/xslt-10-ex-d2-html.xml')::xml
-    ) then
-        raise exception 'Invalid transform for XSLT1.0 Example D.2: %', xslt_10_ex_d2_html;
+    if prompt_result = '' then
+        raise exception 'Empty prompt response';
     end if;
-
-    select postxml.xsl_transform(
-        postxml.read_text('/tmp/xslt-10-ex-d2-svg.xsl')::xml,
-        postxml.read_text('/tmp/xslt-10-ex-d2-in.xml')::xml
-    ) into xslt_10_ex_d2_svg;
-    if not postxml.xml_docs_equal(
-        xslt_10_ex_d2_svg,
-        postxml.read_text('/tmp/xslt-10-ex-d2-svg.xml')::xml
-    ) then
-        raise exception 'Invalid transform for XSLT1.0 Example D.2: %', xslt_10_ex_d2_svg;
-    end if;
-
-    perform postxml_test.test_xsl_fail();
-    return;
 end;
 $$ language plpgsql;
 
-create function postxml_test.test_xml_docs_equal()
+create function postllm_test.test_prompt_json()
 returns void as $$
+declare
+    prompt_result text;
 begin
-    if not postxml.xml_docs_equal(
-        postxml.read_text('/tmp/xslt-10-ex-d1.xsl')::xml,
-        postxml.read_text('/tmp/xslt-10-ex-d1.xsl')::xml
-    ) then
-        raise exception 'XML docs equal not working';
-    end if;
+    select postllm.prompt(
+        '/tmp/gemma-1.1-7b-it.Q2_K.gguf',
+        'Print a JSON representation of the following data. Do not include surrounding quotation marks, markdownlike ```json...``` or any other text, you must output ONLY valid JSON, again not Markdown or any other markup.\nData:\nPaul Anderson, 23, lives in NYC and makes 5 million dollars annually.\nJSON:\n'
+    ) into prompt_result;
 
-    return;
+    if not postllm.parse_json_markdown(prompt_result)::jsonb = '{"name":"Paul Anderson","age":23,"location":"NYC","income":5000000}'::jsonb then
+        raise exception 'Invalid json response %', postllm.parse_json_markdown(prompt_result)::text;
+    end if;
 end;
 $$ language plpgsql;
 
-select postxml_test.test_xml_docs_equal();
-select postxml.init_xsd('/tmp/XMLSchema-10.xsd');
-select postxml_test.test_xsd();
-select postxml_test.test_xsl();
-
-drop schema postxml_test cascade;
+select postllm_test.test_prompt_fails_on_model_file_missing();
+select postllm_test.test_prompt_doesnt_output_empty();
+select postllm_test.test_prompt_json();
+drop schema postllm_test cascade;

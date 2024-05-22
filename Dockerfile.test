@@ -1,15 +1,36 @@
 FROM albaike/pstk:latest
 
 USER root
-RUN apt install -y libxslt1-dev libxslt1.1 libxml2 libxml2-dev 
+RUN apt install -y git
 
 USER postgres
-WORKDIR /postxml
-COPY . .
+RUN echo 'export PSTK_ARGS="--extension --schema-path=postllm--1.0.sql /postllm test"' \
+    >> ~/.env
+
+WORKDIR /postllm
+COPY llama.cpp llama.cpp
+USER root
+RUN chown -R postgres:postgres /postllm
+USER postgres
+WORKDIR /postllm/llama.cpp
+RUN cmake -DCMAKE_POSITION_INDEPENDENT_CODE=ON .
+RUN make
+USER root
+RUN make install
+USER postgres
+
+WORKDIR /postllm
+COPY files files
+COPY CMakeLists.txt .
+COPY postllm.cpp .
+COPY postllm.hpp .
+
+RUN cmake .
+RUN make
+
+COPY postllm.control .
+COPY *.sql .
 
 EXPOSE 5432
-
-RUN echo 'export PSTK_ARGS="--extension --schema-path=postxml--1.0.sql /postxml test"' \
-    >> ~/.env
 
 CMD ["bash", "/docker_postgres.sh"]

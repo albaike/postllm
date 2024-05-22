@@ -1,4 +1,11 @@
-postxml.o
-postxml.so
-postxml.bc
+postllm.so
+postllm.bc
+
+cmake_install.cmake
+Makefile
+compile_commands.json
+CMakeCache.txt
+CMakeFiles/
+
+files/*.gguf
 .env
