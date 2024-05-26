@@ -1,6 +1,6 @@
 create schema postllm;
 
-create function postllm.prompt(text,text)
+create function postllm.prompt(text,text,int)
 returns text
 as 'postllm','prompt'
 language C strict;

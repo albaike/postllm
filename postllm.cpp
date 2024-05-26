@@ -46,11 +46,11 @@ extern "C" {
 Datum prompt(PG_FUNCTION_ARGS) {
     text *model_filename_text = PG_GETARG_TEXT_P(0);
     text *prompt_text = PG_GETARG_TEXT_P(1);
+    int32 n_len = PG_GETARG_INT32(2);
 
     char* model_filename = text_to_cstring(model_filename_text);
     char* prompt = text_to_cstring(prompt_text);
-    // int n_len = strlen(prompt);
-    const int n_len = 2048;
+    // const int n_len = *total_tokens;
 
     llama_backend_init();
     llama_numa_init(GGML_NUMA_STRATEGY_DISABLED);
@@ -65,8 +65,8 @@ Datum prompt(PG_FUNCTION_ARGS) {
 
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.seed = 1234;
-    ctx_params.n_ctx = 2048;
-    ctx_params.n_threads = 16; // TODO get_math_cpu_count() from llama.cpp/common
+    ctx_params.n_ctx = n_len;
+    ctx_params.n_threads = get_math_cpu_count();
     // ctx_params.n_threads_batch = params.n_threads_batch == -1 ? params.n_threads : params.n_threads_batch;
     ctx_params.n_threads_batch = ctx_params.n_threads;
     // DEFAULT:
@@ -79,17 +79,14 @@ Datum prompt(PG_FUNCTION_ARGS) {
     std::vector<llama_token> tokens_list;
     tokens_list = ::llama_tokenize(ctx, prompt, true);
 
-    const int n_ctx    = llama_n_ctx(ctx);
-    const int n_kv_req = tokens_list.size() + (n_len - tokens_list.size());
-
-    if (n_kv_req > n_ctx) {
+    if (n_len > llama_n_ctx(ctx)) {
         ereport(ERROR, (errcode_for_file_access(),
             errmsg(
                 "%s: error: n_kv_req > n_ctx, the required KV cache size is not big enough\n", __func__
             )));
     }
 
-    llama_batch batch = llama_batch_init(512, 0, 1);
+    llama_batch batch = llama_batch_init(tokens_list.size(), 0, 1);
     for (size_t i = 0; i < tokens_list.size(); i++) {
         llama_batch_add(batch, tokens_list[i], i, { 0 }, false);
     }
