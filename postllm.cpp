@@ -79,10 +79,11 @@ Datum prompt(PG_FUNCTION_ARGS) {
     std::vector<llama_token> tokens_list;
     tokens_list = ::llama_tokenize(ctx, prompt, true);
 
-    if (n_len > llama_n_ctx(ctx)) {
+    const int n_ctx = llama_n_ctx(ctx);
+    if (n_len > n_ctx) {
         ereport(ERROR, (errcode_for_file_access(),
             errmsg(
-                "%s: error: n_kv_req > n_ctx, the required KV cache size is not big enough\n", __func__
+                "%s: error: n_kv_req > n_ctx, the required KV cache size is not big enough:\nlen: %d, ctx: %d\n", __func__, n_len, n_ctx
             )));
     }
 
