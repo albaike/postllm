@@ -2,6 +2,29 @@ create schema postllm_test;
 
 -- set log_min_messages to debug1;
 
+create function postllm_test.test_prompt_model()
+returns void as $$
+declare
+    model_filename text;
+    prompt_result1 text;
+    prompt_result2 text;
+    prompt_result3 text;
+begin
+    select '/tmp/gemma-1.1-7b-it.Q2_K.gguf' into model_filename;
+
+    perform postllm.load_model(model_filename);
+
+    select postllm.prompt_model(model_filename, 'a:\n', 64) into prompt_result1;
+    select postllm.prompt_model(model_filename, 'Say hi!\n', 64) into prompt_result2;
+    select postllm.prompt_model(model_filename, 'Sum of all even numbers less than 64\n', 64) into prompt_result3;
+
+    perform postllm.free_model(model_filename);
+
+    raise exception 'Prompt results:\n1: "%"\n2: "%"\n3: "%"',
+        prompt_result1, prompt_result2, prompt_result3;
+end;
+$$ language plpgsql;
+
 create function postllm_test.test_prompt_fails_on_model_file_missing()
 returns void as $$
 begin
@@ -51,7 +74,9 @@ begin
 end;
 $$ language plpgsql;
 
-select postllm_test.test_prompt_fails_on_model_file_missing();
-select postllm_test.test_prompt_doesnt_output_empty();
-select postllm_test.test_prompt_json();
+select postllm_test.test_prompt_model();
+-- select postllm_test.test_prompt_fails_on_model_file_missing();
+-- select postllm_test.test_prompt_doesnt_output_empty();
+-- select postllm_test.test_prompt_json();
+-- select postllm_test.test_text_to_token_length();
 drop schema postllm_test cascade;

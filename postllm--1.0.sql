@@ -1,5 +1,20 @@
 create schema postllm;
 
+create function postllm.load_model(text)
+returns void
+as 'postllm','load_model'
+language C strict;
+
+create function postllm.free_model(text)
+returns void
+as 'postllm','free_model'
+language C strict;
+
+create function postllm.prompt_model(text,text,int)
+returns text
+as 'postllm','prompt_model'
+language C strict;
+
 create function postllm.prompt(text,text,int)
 returns text
 as 'postllm','prompt'
