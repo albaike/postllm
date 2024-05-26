@@ -79,14 +79,6 @@ Datum prompt(PG_FUNCTION_ARGS) {
     std::vector<llama_token> tokens_list;
     tokens_list = ::llama_tokenize(ctx, prompt, true);
 
-    const int n_ctx = llama_n_ctx(ctx);
-    if (n_len > n_ctx) {
-        ereport(ERROR, (errcode_for_file_access(),
-            errmsg(
-                "%s: error: n_kv_req > n_ctx, the required KV cache size is not big enough:\nlen: %d, ctx: %d\n", __func__, n_len, n_ctx
-            )));
-    }
-
     llama_batch batch = llama_batch_init(tokens_list.size(), 0, 1);
     for (size_t i = 0; i < tokens_list.size(); i++) {
         llama_batch_add(batch, tokens_list[i], i, { 0 }, false);
