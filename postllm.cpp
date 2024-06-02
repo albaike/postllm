@@ -277,7 +277,7 @@ Datum prompt_model(PG_FUNCTION_ARGS) {
         ctx_params.rope_freq_scale = ((float) n_len) / ((float) max_ctx_len);
     }
     // ctx_params.n_threads = get_math_cpu_count();
-    ctx_params.n_threads = 16;
+    ctx_params.n_threads = PG_GETARG_INT32(3);
     // ctx_params.n_threads_batch = params.n_threads_batch == -1 ? params.n_threads : params.n_threads_batch;
     ctx_params.n_threads_batch = ctx_params.n_threads;
     // DEFAULT:
@@ -287,7 +287,7 @@ Datum prompt_model(PG_FUNCTION_ARGS) {
 
     llama_context* ctx = llama_new_context_with_model(entry->model, ctx_params);
 
-    text *prompt_text = PG_GETARG_TEXT_P(3);
+    text *prompt_text = PG_GETARG_TEXT_P(4);
     char* prompt = text_to_cstring(prompt_text);
     std::vector<llama_token> tokens_list;
     elog(DEBUG1, "Tokenizing prompt text.");

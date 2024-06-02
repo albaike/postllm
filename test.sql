@@ -17,8 +17,10 @@ exception
 end;
 $$ language plpgsql;
 
-create function postllm_test.test_model_n_ctx(model_filename text)
-returns void as $$
+create function postllm_test.test_model_n_ctx(
+    model_filename text,
+    n_ctx_max int
+) returns void as $$
 declare
     n_ctx int;
 begin
@@ -26,7 +28,7 @@ begin
     select postllm.model_n_ctx(model_filename) into n_ctx;
     perform postllm.free_model(model_filename);
 
-    if n_ctx != 8192 then
+    if n_ctx != n_ctx_max then
         raise exception 'Model n_ctx: %',
             n_ctx;
     end if;
@@ -73,15 +75,18 @@ begin
 end;
 $$ language plpgsql;
 
-create function postllm_test.test_prompt_doesnt_output_empty(model_filename text)
-returns void as $$
+create function postllm_test.test_prompt_doesnt_output_empty(
+    model_filename text,
+    n_ctx_max int,
+    n_threads int
+) returns void as $$
 declare
     prompt_result text;
 begin
     perform postllm.load_model(model_filename);
     select postllm.prompt_model(
         model_filename,
-        512, 8192,
+        512, n_ctx_max, n_threads,
         'Print the exact text: "SAMPLE TEXT". Do not include the quotation marks or any other text, simply print the enclosed text.\n'
     ) into prompt_result;
 
@@ -92,8 +97,11 @@ begin
 end;
 $$ language plpgsql;
 
-create function postllm_test.test_prompt_multi(model_filename text)
-returns void as $$
+create function postllm_test.test_prompt_multi(
+    model_filename text,
+    n_ctx_max int,
+    n_threads int
+) returns void as $$
 declare
     prompt_result1 text;
     prompt_result2 text;
@@ -118,7 +126,7 @@ begin
 
     select postllm.prompt_model(
         model_filename,
-        1,1,
+        1,1,n_threads,
         'Print the exact text: "SAMPLE TEXT". Do not include the quotation marks or any other text, simply print the enclosed text.\n'
     ) into prompt_result;
 
@@ -128,8 +136,11 @@ begin
 end;
 $$ language plpgsql;
 
-create function postllm_test.test_prompt_json(model_filename text)
-returns void as $$
+create function postllm_test.test_prompt_json(
+    model_filename text,
+    n_ctx_max int,
+    n_threads int
+) returns void as $$
 declare
     prompt_result text;
 begin
@@ -137,7 +148,7 @@ begin
 
     select postllm.prompt_model(
         model_filename,
-        128, 8192,
+        128, n_ctx_max, n_threads,
         E'Print a JSON representation of presented data, starting with *"```json"* and ending with *"```"*. '
         || E'Do not generate any other text, you must output ONLY valid JSON. '
         || E'Datatypes should best match the given value (ie convert named numbers to JSON integers).\n\n'
@@ -156,16 +167,19 @@ create function postllm_test.run_tests()
 returns void as $$
 declare
     model_filename text;
+    n_ctx_max int;
+    n_threads int;
 begin
     select '/tmp/gemma-1.1-7b-it.Q2_K.gguf' into model_filename;
+    select 8192 into n_ctx_max;
+    select 16 into n_threads;
 
     perform postllm_test.test_load_model_missing_file();
-    perform postllm_test.test_model_n_ctx(model_filename);
+    perform postllm_test.test_model_n_ctx(model_filename,n_ctx_max);
     perform postllm_test.test_text_to_token_length(model_filename);
-    -- perform postllm_test.test_text_to_tokens(model_filename);
-    perform postllm_test.test_prompt_doesnt_output_empty(model_filename);
-    perform postllm_test.test_prompt_multi(model_filename);
-    perform postllm_test.test_prompt_json(model_filename);
+    perform postllm_test.test_prompt_doesnt_output_empty(model_filename,n_ctx_max,n_threads);
+    perform postllm_test.test_prompt_multi(model_filename,n_ctx_max,n_threads);
+    perform postllm_test.test_prompt_json(model_filename,n_ctx_max,n_threads);
 end;
 $$ language plpgsql;
 

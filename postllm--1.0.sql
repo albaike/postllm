@@ -10,7 +10,7 @@ returns void
 as 'postllm','free_model'
 language C strict;
 
-create function postllm.prompt_model(text,int,int,text)
+create function postllm.prompt_model(text,int,int,int,text)
 returns text
 as 'postllm','prompt_model'
 language C strict;
