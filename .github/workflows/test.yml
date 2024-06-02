@@ -18,7 +18,8 @@ jobs:
 
         - name: Download a model
           shell: bash
-          run: cd files && \
+          run: |
+               cd files
                curl -O 'https://huggingface.co/ggml-org/gemma-1.1-7b-it-Q2_K-GGUF/resolve/main/gemma-1.1-7b-it.Q2_K.gguf?download=true'
 
         - name: Build the test image
