@@ -4,6 +4,7 @@ extern "C" {
     #include "miscadmin.h"
     #include "mb/pg_wchar.h"
     #include "utils/builtins.h"
+    #include "utils/array.h"
     #include "storage/ipc.h"
     #include "storage/shmem.h"
     #include "storage/lwlock.h"

@@ -2,37 +2,14 @@ create schema postllm_test;
 
 -- set log_min_messages to debug1;
 
-create function postllm_test.test_prompt_model()
+create function postllm_test.test_load_model_missing_file()
 returns void as $$
 declare
     model_filename text;
-    prompt_result1 text;
-    prompt_result2 text;
-    prompt_result3 text;
 begin
-    select '/tmp/gemma-1.1-7b-it.Q2_K.gguf' into model_filename;
+    select '/bad/model/filename' into model_filename;
 
     perform postllm.load_model(model_filename);
-
-    select postllm.prompt_model(model_filename, 'a:\n', 64) into prompt_result1;
-    select postllm.prompt_model(model_filename, 'Say hi!\n', 64) into prompt_result2;
-    select postllm.prompt_model(model_filename, 'Sum of all even numbers less than 64\n', 64) into prompt_result3;
-
-    perform postllm.free_model(model_filename);
-
-    raise exception 'Prompt results:\n1: "%"\n2: "%"\n3: "%"',
-        prompt_result1, prompt_result2, prompt_result3;
-end;
-$$ language plpgsql;
-
-create function postllm_test.test_prompt_fails_on_model_file_missing()
-returns void as $$
-begin
-    perform postllm.prompt(
-        '/bad/model/filename',
-        'EXAMPLE PROMPT',
-        512
-    );
 
     raise exception 'Prompt fail not raised.';
 exception
@@ -40,33 +17,134 @@ exception
 end;
 $$ language plpgsql;
 
-create function postllm_test.test_prompt_doesnt_output_empty()
+create function postllm_test.test_model_n_ctx(model_filename text)
+returns void as $$
+declare
+    n_ctx int;
+begin
+    perform postllm.load_model(model_filename);
+    select postllm.model_n_ctx(model_filename) into n_ctx;
+    perform postllm.free_model(model_filename);
+
+    if n_ctx != 8192 then
+        raise exception 'Model n_ctx: %',
+            n_ctx;
+    end if;
+end;
+$$ language plpgsql;
+
+create function postllm_test.test_text_to_token_length(model_filename text)
+returns void as $$
+declare
+    prompt_text_length int;
+    prompt_text text;
+    prompt_token_length int;
+begin
+    select 32000 into prompt_text_length;
+    select substring(repeat('0', prompt_text_length) from 1 for prompt_text_length) into prompt_text;
+
+    perform postllm.load_model(model_filename);
+    select postllm.text_to_token_length(model_filename, prompt_text) into prompt_token_length;
+    perform postllm.free_model(model_filename);
+
+    if prompt_token_length != 32002 then
+        raise exception 'Text: % chars, % tokens',
+            prompt_text_length, prompt_token_length;
+    end if;
+end;
+$$ language plpgsql;
+
+create function postllm_test.test_text_to_tokens(model_filename text)
+returns void as $$
+declare
+    prompt_text_length int;
+    prompt_text text;
+    prompt_tokens int[];
+begin
+    select 32000 into prompt_text_length;
+    select substring(repeat('0', prompt_text_length) from 1 for prompt_text_length) into prompt_text;
+
+    perform postllm.load_model(model_filename);
+    select postllm.text_to_tokens(model_filename, prompt_text) into prompt_tokens;
+    perform postllm.free_model(model_filename);
+
+    raise exception 'Text: % chars, % tokens',
+        prompt_text_length, array_length(prompt_tokens, 1);
+end;
+$$ language plpgsql;
+
+create function postllm_test.test_prompt_doesnt_output_empty(model_filename text)
 returns void as $$
 declare
     prompt_result text;
 begin
-    select postllm.prompt(
-        '/tmp/gemma-1.1-7b-it.Q2_K.gguf',
-        'Print the exact text: "SAMPLE TEXT". Do not include the quotation marks or any other text, simply print the enclosed text.\n',
-        512
+    perform postllm.load_model(model_filename);
+    select postllm.prompt_model(
+        model_filename,
+        512, 8192,
+        'Print the exact text: "SAMPLE TEXT". Do not include the quotation marks or any other text, simply print the enclosed text.\n'
     ) into prompt_result;
 
     if prompt_result = '' then
         raise exception 'Empty prompt response';
     end if;
+    perform postllm.free_model(model_filename);
 end;
 $$ language plpgsql;
 
-create function postllm_test.test_prompt_json()
+create function postllm_test.test_prompt_multi(model_filename text)
+returns void as $$
+declare
+    prompt_result1 text;
+    prompt_result2 text;
+    prompt_result3 text;
+begin
+    perform postllm.load_model(model_filename);
+
+    select postllm.prompt_model(model_filename,64,8192,'a:\n') into prompt_result1;
+    select postllm.prompt_model(model_filename,64,8192,'Say hi!\n') into prompt_result2;
+    select postllm.prompt_model(model_filename,64,8192,'Sum of all even numbers less than 64\n') into prompt_result3;
+
+    perform postllm.free_model(model_filename);
+end;
+$$ language plpgsql;
+
+create function postllm_test.test_prompt_kv_size_too_small(model_filename text)
 returns void as $$
 declare
     prompt_result text;
 begin
-    select postllm.prompt(
-        '/tmp/gemma-1.1-7b-it.Q2_K.gguf',
-        'Print a JSON representation of the following data. Do not include surrounding quotation marks, markdownlike ```json...``` or any other text, you must output ONLY valid JSON, again not Markdown or any other markup.\nData:\nPaul Anderson, 23, lives in NYC and makes 5 million dollars annually.\nJSON:\n',
-        512
+    perform postllm.load_model(model_filename);
+
+    select postllm.prompt_model(
+        model_filename,
+        1,1,
+        'Print the exact text: "SAMPLE TEXT". Do not include the quotation marks or any other text, simply print the enclosed text.\n'
     ) into prompt_result;
+
+    perform postllm.free_model(model_filename);
+
+    raise exception '%', prompt_result;
+end;
+$$ language plpgsql;
+
+create function postllm_test.test_prompt_json(model_filename text)
+returns void as $$
+declare
+    prompt_result text;
+begin
+    perform postllm.load_model(model_filename);
+
+    select postllm.prompt_model(
+        model_filename,
+        128, 8192,
+        E'Print a JSON representation of presented data, starting with *"```json"* and ending with *"```"*. '
+        || E'Do not generate any other text, you must output ONLY valid JSON. '
+        || E'Datatypes should best match the given value (ie convert named numbers to JSON integers).\n\n'
+        || E'#Data\n\nPaul Anderson, 23, lives in NYC and makes 5 million dollars annually.\n\n'
+        || E'#Result\n\n'
+    ) into prompt_result;
+    perform postllm.free_model(model_filename);
 
     if not postllm.parse_json_markdown(prompt_result)::jsonb = '{"name":"Paul Anderson","age":23,"location":"NYC","income":5000000}'::jsonb then
         raise exception 'Invalid json response %', postllm.parse_json_markdown(prompt_result)::text;
@@ -74,9 +152,23 @@ begin
 end;
 $$ language plpgsql;
 
-select postllm_test.test_prompt_model();
--- select postllm_test.test_prompt_fails_on_model_file_missing();
--- select postllm_test.test_prompt_doesnt_output_empty();
--- select postllm_test.test_prompt_json();
--- select postllm_test.test_text_to_token_length();
+create function postllm_test.run_tests()
+returns void as $$
+declare
+    model_filename text;
+begin
+    select '/tmp/gemma-1.1-7b-it.Q2_K.gguf' into model_filename;
+
+    perform postllm_test.test_load_model_missing_file();
+    perform postllm_test.test_model_n_ctx(model_filename);
+    perform postllm_test.test_text_to_token_length(model_filename);
+    -- perform postllm_test.test_text_to_tokens(model_filename);
+    perform postllm_test.test_prompt_doesnt_output_empty(model_filename);
+    perform postllm_test.test_prompt_multi(model_filename);
+    perform postllm_test.test_prompt_json(model_filename);
+end;
+$$ language plpgsql;
+
+select postllm_test.run_tests();
+
 drop schema postllm_test cascade;
