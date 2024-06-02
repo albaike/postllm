@@ -34,6 +34,12 @@ sudo systemctl restart postgresql
 
 ## Test
 
+### Download model for testing
+```sh
+cd files/
+curl -O 'https://huggingface.co/ggml-org/gemma-1.1-7b-it-Q2_K-GGUF/resolve/main/gemma-1.1-7b-it.Q2_K.gguf?download=true'
+```
+
 ### Docker
 ```sh
 docker build -t postllm-test -f Dockerfile.test . && docker run -e POSTGRES_PASSWORD=pw postllm-test; echo $?
