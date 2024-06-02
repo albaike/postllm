@@ -172,7 +172,7 @@ declare
 begin
     select '/tmp/gemma-1.1-7b-it.Q2_K.gguf' into model_filename;
     select 8192 into n_ctx_max;
-    select 16 into n_threads;
+    select 0 into n_threads;
 
     perform postllm_test.test_load_model_missing_file();
     perform postllm_test.test_model_n_ctx(model_filename,n_ctx_max);
