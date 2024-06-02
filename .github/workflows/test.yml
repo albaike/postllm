@@ -1,0 +1,27 @@
+name: Test package
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+    test:
+      name: test
+      runs-on: ubuntu-latest
+      environment: testing
+      steps:
+        - name: Checkout code
+          uses: actions/checkout@v4
+          with:
+                submodules: 'recursive'
+
+        - name: Download a model
+          run: cd files && \
+               curl -O 'https://huggingface.co/ggml-org/gemma-1.1-7b-it-Q2_K-GGUF/resolve/main/gemma-1.1-7b-it.Q2_K.gguf?download=true'
+
+        - name: Build the test image
+          run: docker build -t test -f Dockerfile.test .
+
+        - name: Run the test
+          run: docker run -e POSTGRES_PASSWORD=pw test
