@@ -37,7 +37,7 @@ sudo systemctl restart postgresql
 ### Download model for testing
 ```sh
 cd files/
-curl -O 'https://huggingface.co/ggml-org/gemma-1.1-7b-it-Q2_K-GGUF/resolve/main/gemma-1.1-7b-it.Q2_K.gguf?download=true'
+curl -L 'https://huggingface.co/ggml-org/gemma-1.1-7b-it-Q2_K-GGUF/resolve/main/gemma-1.1-7b-it.Q2_K.gguf?download=true' -o files/gemma-1.1-7b-it.Q2_K.gguf
 ```
 
 ### Docker
