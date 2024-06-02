@@ -109,9 +109,9 @@ declare
 begin
     perform postllm.load_model(model_filename);
 
-    select postllm.prompt_model(model_filename,64,8192,'a:\n') into prompt_result1;
-    select postllm.prompt_model(model_filename,64,8192,'Say hi!\n') into prompt_result2;
-    select postllm.prompt_model(model_filename,64,8192,'Sum of all even numbers less than 64\n') into prompt_result3;
+    select postllm.prompt_model(model_filename,64,n_ctx_max,n_threads,'a:\n') into prompt_result1;
+    select postllm.prompt_model(model_filename,64,n_ctx_max,n_threads,'Say hi!\n') into prompt_result2;
+    select postllm.prompt_model(model_filename,64,n_ctx_max,n_threads,'Sum of all even numbers less than 64\n') into prompt_result3;
 
     perform postllm.free_model(model_filename);
 end;

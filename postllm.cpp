@@ -276,8 +276,10 @@ Datum prompt_model(PG_FUNCTION_ARGS) {
     if (max_ctx_len < n_len) {
         ctx_params.rope_freq_scale = ((float) n_len) / ((float) max_ctx_len);
     }
-    // ctx_params.n_threads = get_math_cpu_count();
     ctx_params.n_threads = PG_GETARG_INT32(3);
+    if (ctx_params.n_threads == 0) {
+        ctx_params.n_threads = get_math_cpu_count();
+    }
     // ctx_params.n_threads_batch = params.n_threads_batch == -1 ? params.n_threads : params.n_threads_batch;
     ctx_params.n_threads_batch = ctx_params.n_threads;
     // DEFAULT:
