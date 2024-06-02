@@ -8,15 +8,16 @@ on:
 jobs:
     test:
       name: test
-      runs-on: ubuntu-latest
+      runs-on: ubuntu-20.04
       environment: testing
       steps:
         - name: Checkout code
           uses: actions/checkout@v4
           with:
-                submodules: 'recursive'
+                submodules: recursive
 
         - name: Download a model
+          shell: bash
           run: cd files && \
                curl -O 'https://huggingface.co/ggml-org/gemma-1.1-7b-it-Q2_K-GGUF/resolve/main/gemma-1.1-7b-it.Q2_K.gguf?download=true'
 
