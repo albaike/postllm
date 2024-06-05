@@ -213,12 +213,7 @@ Datum model_n_ctx(PG_FUNCTION_ARGS) {
         ereport(ERROR, (errcode_for_file_access(), errmsg("No loaded model with name: %s", model_filename)));
     }
 
-    llama_context_params ctx_params = llama_context_default_params();
-    ctx_params.n_ctx = 0;
-
-    llama_context* ctx = llama_new_context_with_model(entry->model, ctx_params);
-    int n_ctx = llama_n_ctx(ctx);
-    llama_free(ctx);
+    int n_ctx = llama_n_ctx_train(entry->model);
     LWLockRelease(ModelHashLock);
     PG_RETURN_INT32(n_ctx);
 }
