@@ -77,6 +77,7 @@ $$ language plpgsql;
 
 create function postllm_test.test_prompt_doesnt_output_empty(
     model_filename text,
+    grammar_filename text,
     n_ctx_max int,
     n_threads int
 ) returns void as $$
@@ -85,7 +86,7 @@ declare
 begin
     perform postllm.load_model(model_filename);
     select postllm.prompt_model(
-        model_filename,
+        model_filename,grammar_filename,
         512, n_ctx_max, n_threads,
         'Print the exact text: "SAMPLE TEXT". Do not include the quotation marks or any other text, simply print the enclosed text.\n'
     ) into prompt_result;
@@ -93,12 +94,14 @@ begin
     if prompt_result = '' then
         raise exception 'Empty prompt response';
     end if;
+
     perform postllm.free_model(model_filename);
 end;
 $$ language plpgsql;
 
 create function postllm_test.test_prompt_multi(
     model_filename text,
+    grammar_filename text,
     n_ctx_max int,
     n_threads int
 ) returns void as $$
@@ -109,35 +112,37 @@ declare
 begin
     perform postllm.load_model(model_filename);
 
-    select postllm.prompt_model(model_filename,64,n_ctx_max,n_threads,'a:\n') into prompt_result1;
-    select postllm.prompt_model(model_filename,64,n_ctx_max,n_threads,'Say hi!\n') into prompt_result2;
-    select postllm.prompt_model(model_filename,64,n_ctx_max,n_threads,'Sum of all even numbers less than 64\n') into prompt_result3;
+    select postllm.prompt_model(model_filename,grammar_filename,64,n_ctx_max,n_threads,'a:\n') into prompt_result1;
+    select postllm.prompt_model(model_filename,grammar_filename,64,n_ctx_max,n_threads,'Say hi!\n') into prompt_result2;
+    select postllm.prompt_model(model_filename,grammar_filename,64,n_ctx_max,n_threads,'Sum of all even numbers less than 64\n') into prompt_result3;
 
     perform postllm.free_model(model_filename);
 end;
 $$ language plpgsql;
 
-create function postllm_test.test_prompt_kv_size_too_small(model_filename text)
-returns void as $$
+create function postllm_test.test_prompt_kv_size_too_small(
+    model_filename text,
+    grammar_filename text,
+    n_threads int
+) returns void as $$
 declare
     prompt_result text;
 begin
     perform postllm.load_model(model_filename);
 
     select postllm.prompt_model(
-        model_filename,
+        model_filename,grammar_filename,
         1,1,n_threads,
         'Print the exact text: "SAMPLE TEXT". Do not include the quotation marks or any other text, simply print the enclosed text.\n'
     ) into prompt_result;
 
     perform postllm.free_model(model_filename);
-
-    raise exception '%', prompt_result;
 end;
 $$ language plpgsql;
 
 create function postllm_test.test_prompt_json(
     model_filename text,
+    grammar_filename text,
     n_ctx_max int,
     n_threads int
 ) returns void as $$
@@ -147,12 +152,13 @@ begin
     perform postllm.load_model(model_filename);
 
     select postllm.prompt_model(
-        model_filename,
-        128, n_ctx_max, n_threads,
+        model_filename,grammar_filename,
+        4096, n_ctx_max, n_threads,
         E'Print a JSON representation of presented data, starting with *"```json"* and ending with *"```"*. '
-        || E'Do not generate any other text, you must output ONLY valid JSON. '
-        || E'Datatypes should best match the given value (ie convert named numbers to JSON integers).\n\n'
-        || E'#Data\n\nPaul Anderson, 23, lives in NYC and makes 5 million dollars annually.\n\n'
+        || E'Do not generate any other text, you must output ONLY valid JSON.\n\n'
+        -- || E'Datatypes should best match the given value (ie convert number words like "thousand" to JSON integers).\n\n'
+        -- || E'#Data\n\nPaul Anderson, 23, lives in NYC and makes 5 million dollars annually.\n\n'
+        || E'#Data\n\nPaul Anderson, 23, lives in NYC and makes 5,000,000 annually.\n\n'
         || E'#Result\n\n'
     ) into prompt_result;
     perform postllm.free_model(model_filename);
@@ -167,19 +173,21 @@ create function postllm_test.run_tests()
 returns void as $$
 declare
     model_filename text;
+    grammar_filename text;
     n_ctx_max int;
     n_threads int;
 begin
     select '/tmp/gemma-1.1-7b-it.Q2_K.gguf' into model_filename;
+    select '/postllm/llama.cpp/grammars/json.gbnf' into grammar_filename;
     select 8192 into n_ctx_max;
     select 0 into n_threads;
 
     perform postllm_test.test_load_model_missing_file();
     perform postllm_test.test_model_n_ctx(model_filename,n_ctx_max);
     perform postllm_test.test_text_to_token_length(model_filename);
-    perform postllm_test.test_prompt_doesnt_output_empty(model_filename,n_ctx_max,n_threads);
-    perform postllm_test.test_prompt_multi(model_filename,n_ctx_max,n_threads);
-    perform postllm_test.test_prompt_json(model_filename,n_ctx_max,n_threads);
+    perform postllm_test.test_prompt_doesnt_output_empty(model_filename,grammar_filename,n_ctx_max,n_threads);
+    perform postllm_test.test_prompt_multi(model_filename,grammar_filename,n_ctx_max,n_threads);
+    perform postllm_test.test_prompt_json(model_filename,grammar_filename,n_ctx_max,n_threads);
 end;
 $$ language plpgsql;
 

@@ -12,6 +12,10 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include <fstream>
+#include <sstream>
+#include <iterator>
+#include <iostream>
 
 // TODO: common
 // void llama_batch_clear(struct llama_batch & batch) {
@@ -253,6 +257,35 @@ Datum prompt_model(PG_FUNCTION_ARGS) {
     bool found;
     SharedModel *entry;
 
+    llama_sampling_params sparams;
+    text *grammar_filename_text = PG_GETARG_TEXT_P(1);
+    char* grammar_filename = text_to_cstring(grammar_filename_text);
+    std::ifstream file(grammar_filename);
+    if (!file) {
+        ereport(ERROR, (errcode_for_file_access(), errmsg("Failed to load grammar from file: %s", grammar_filename)));
+    }
+    std::copy(
+        std::istreambuf_iterator<char>(file),
+        std::istreambuf_iterator<char>(),
+        std::back_inserter(sparams.grammar)
+    );
+
+    llama_context_params ctx_params = llama_context_default_params();
+    ctx_params.seed = 1234;
+    int32 n_len = PG_GETARG_INT32(2);
+    int32 max_ctx_len = PG_GETARG_INT32(3);
+    ctx_params.n_ctx = n_len;
+    ctx_params.n_batch = n_len;
+    if (max_ctx_len < n_len) {
+        ctx_params.rope_freq_scale = ((float) n_len) / ((float) max_ctx_len);
+    }
+    ctx_params.n_threads = PG_GETARG_INT32(4);
+    if (ctx_params.n_threads == 0) {
+        ctx_params.n_threads = get_math_cpu_count();
+    }
+    // ctx_params.n_threads_batch = params.n_threads_batch == -1 ? params.n_threads : params.n_threads_batch;
+    ctx_params.n_threads_batch = ctx_params.n_threads;
+
     elog(DEBUG1, "Acquiring lock to run prompt");
     LWLockAcquire(ModelHashLock, LW_EXCLUSIVE);
 
@@ -262,135 +295,71 @@ Datum prompt_model(PG_FUNCTION_ARGS) {
         ereport(ERROR, (errcode_for_file_access(), errmsg("No loaded model with name: %s", model_filename)));
     }
 
-    llama_context_params ctx_params = llama_context_default_params();
-    ctx_params.seed = 1234;
-    int32 n_len = PG_GETARG_INT32(1);
-    int32 max_ctx_len = PG_GETARG_INT32(2);
-    ctx_params.n_ctx = n_len;
-    ctx_params.n_batch = n_len;
-    if (max_ctx_len < n_len) {
-        ctx_params.rope_freq_scale = ((float) n_len) / ((float) max_ctx_len);
-    }
-    ctx_params.n_threads = PG_GETARG_INT32(3);
-    if (ctx_params.n_threads == 0) {
-        ctx_params.n_threads = get_math_cpu_count();
-    }
-    // ctx_params.n_threads_batch = params.n_threads_batch == -1 ? params.n_threads : params.n_threads_batch;
-    ctx_params.n_threads_batch = ctx_params.n_threads;
-    // DEFAULT:
-    // ctx_params.type_k = GGML_TYPE_F16;
-    // COMPAT:
-    // ctx_params.type_k = GGML_TYPE_Q4_K;
-
     llama_context* ctx = llama_new_context_with_model(entry->model, ctx_params);
 
-    text *prompt_text = PG_GETARG_TEXT_P(4);
+    text *prompt_text = PG_GETARG_TEXT_P(5);
     char* prompt = text_to_cstring(prompt_text);
-    std::vector<llama_token> tokens_list;
+
     elog(DEBUG1, "Tokenizing prompt text.");
-    tokens_list = ::llama_tokenize(ctx, prompt, true);
+    std::vector<llama_token> tokens_in = ::llama_tokenize(ctx, prompt, true);
+    const int tokens_in_size = tokens_in.size();
 
-    // elog(DEBUG1, "Loading suffix tokens.");
-    // ArrayType *append_arr = PG_GETARG_ARRAYTYPE_P(2);
-    // if (ARR_NULLBITMAP(append_arr)) {
-    //     ereport(ERROR,
-    //             (errmsg("null elements are not supported")));
-    // }
+    std::vector<llama_token> tokens;
 
-    // int nelems = ArrayGetNItems(ARR_NDIM(append_arr), ARR_DIMS(append_arr));
-    // llama_token *append_data = (llama_token*)ARR_DATA_PTR(append_arr);
-
-    // elog(DEBUG1, "Converting suffix tokens to vec.");
-    // std::vector<llama_token> append_tokens(append_data, append_data + nelems);
-
-    // tokens_list.insert(tokens_list.end(), append_tokens.begin(), append_tokens.end());
-    // size_t tokens_list_size = tokens_list.size();
-    // size_t init_tokens_size = tokens_list_size + append_tokens.size();
-    size_t init_tokens_size = tokens_list.size();
-
-    llama_batch batch = llama_batch_init(init_tokens_size, 0, 1);
-    elog(DEBUG1, "Loading text to batch.");
-    for (size_t i = 0; i < tokens_list.size(); i++) {
-        llama_batch_add(batch, tokens_list[i], i, { 0 }, false);
-    }
-    // elog(DEBUG1, "Loading suffix to batch.");
-    // for (size_t i = 0; i < append_tokens.size(); i++) {
-    //     llama_batch_add(batch, append_tokens[i], i + tokens_list_size, { 0 }, false);
-    // }
-
-    elog(DEBUG1, "Running batch.");
-    batch.logits[batch.n_tokens - 1] = true;
-    elog(DEBUG1, "Decoding initial batch.");
-    if (llama_decode(ctx, batch) != 0) {
-        LWLockRelease(ModelHashLock);
-        ereport(ERROR, (errcode_for_file_access(),
-            errmsg(
-            "%s: llama_decode() failed\n", __func__
-        )));
-    }
-
-    int n_cur    = batch.n_tokens;
-    int n_decode = 0;
+    const int n_batch = 64;
+    int n_decoded = 0;
+    int n_consumed = 0;
 
     std::string res;
+    struct llama_sampling_context * ctx_sampling = llama_sampling_init(sparams);
 
-    elog(DEBUG1, "Looping through batch.");
-    while (n_cur <= n_len) {
-        {
-            // elog(DEBUG1, "Loading vocab.");
-            auto   n_vocab = llama_n_vocab(entry->model);
-            // elog(DEBUG1, "Loading logits.");
-            auto * logits  = llama_get_logits_ith(ctx, batch.n_tokens - 1);
+    while (n_decoded <= n_len) {
+        if (!tokens.empty()) {
+            const int tokens_size = tokens.size();
+            for (int i = 0; i < tokens_size; i++) {
+                const int n_eval = std::min((int)tokens_size - i, n_batch);
+                const int decode_status = llama_decode(ctx, llama_batch_get_one(&tokens[i], n_eval, n_decoded, 0));
+                if (decode_status) {
+                    llama_free(ctx);
+                    llama_sampling_free(ctx_sampling);
+                    LWLockRelease(ModelHashLock);
 
-            std::vector<llama_token_data> candidates;
-            candidates.reserve(n_vocab);
+                    ereport(ERROR, (errcode_for_file_access(),
+                        errmsg(
+                        "%s: llama_decode() failed with %s\nCurrent res: %s", __func__, decode_status, res
+                    )));
+                }
 
-            for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
-                candidates.emplace_back(llama_token_data{ token_id, logits[token_id], 0.0f });
+                n_decoded += n_eval;
             }
+        }
 
-            llama_token_data_array candidates_p = { candidates.data(), candidates.size(), false };
+        tokens.clear();
 
-            // elog(DEBUG1, "Sampling token.");
-            const llama_token new_token_id = llama_sample_token_greedy(ctx, &candidates_p);
-
-            // const llama_token new_token_id = llama_sampling_sample(ctx_sampling, ctx, NULL, n_cur);
-            // llama_sampling_accept(ctx_sampling, ctx, new_token_id, true);
-
-            if (llama_token_is_eog(entry->model, new_token_id) || n_cur == n_len) {
-                res += "\n";
-
+        if ((int) tokens_in.size() <= n_consumed) {
+            const llama_token id = llama_sampling_sample(ctx_sampling, ctx, NULL);
+            if (llama_token_is_eog(entry->model, id)) {
                 break;
             }
-
-            // elog(DEBUG1, "Adding piece.");
-            res += llama_token_to_piece(ctx, new_token_id);
-
-            // elog(DEBUG1, "Clearing batch.");
-            llama_batch_clear(batch);
-
-            // elog(DEBUG1, "Adding batch.");
-            llama_batch_add(batch, new_token_id, n_cur, { 0 }, true);
-
-            n_decode += 1;
+            llama_sampling_accept(ctx_sampling, ctx, id, true);
+            tokens.push_back(id);
+            res += llama_token_to_piece(ctx, id);
+        } else {
+            while ((int) tokens_in.size() > n_consumed) {
+                const llama_token id = tokens_in[n_consumed++];
+                tokens.push_back(id);
+                llama_sampling_accept(ctx_sampling, ctx, id, false);
+                if ((int) tokens.size() >= n_batch) {
+                    break;
+                }
+            }
         }
-
-        n_cur += 1;
-
-        // elog(DEBUG1, "Decoding batch.");
-        if (llama_decode(ctx, batch)) {
-            LWLockRelease(ModelHashLock);
-            fprintf(stderr, "%s : failed to eval, return code %d\n", __func__, 1);
-            return 1;
-        }
-
     }
 
     text *res_text = cstring_to_text((char *) res.c_str());
 
-    llama_batch_free(batch);
     llama_free(ctx);
-
+    llama_sampling_free(ctx_sampling);
     LWLockRelease(ModelHashLock);
 
     PG_RETURN_TEXT_P(res_text);
