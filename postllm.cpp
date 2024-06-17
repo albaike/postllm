@@ -324,7 +324,7 @@ Datum prompt_model(PG_FUNCTION_ARGS) {
                     llama_sampling_free(ctx_sampling);
                     LWLockRelease(ModelHashLock);
 
-                    ereport(ERROR, (errcode_for_file_access(),
+                    ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
                         errmsg(
                         "%s: llama_decode() failed with %s\nCurrent res: %s", __func__, decode_status, res
                     )));
