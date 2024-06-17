@@ -87,7 +87,7 @@ begin
     perform postllm.load_model(model_filename);
     select postllm.prompt_model(
         model_filename,grammar_filename,
-        512, n_ctx_max, n_threads,
+        1024, n_ctx_max, n_threads,
         'Print the exact text: "SAMPLE TEXT". Do not include the quotation marks or any other text, simply print the enclosed text.\n'
     ) into prompt_result;
 
@@ -112,9 +112,9 @@ declare
 begin
     perform postllm.load_model(model_filename);
 
-    select postllm.prompt_model(model_filename,grammar_filename,64,n_ctx_max,n_threads,'a:\n') into prompt_result1;
-    select postllm.prompt_model(model_filename,grammar_filename,64,n_ctx_max,n_threads,'Say hi!\n') into prompt_result2;
-    select postllm.prompt_model(model_filename,grammar_filename,64,n_ctx_max,n_threads,'Sum of all even numbers less than 64\n') into prompt_result3;
+    select postllm.prompt_model(model_filename,grammar_filename,1024,n_ctx_max,n_threads,'a:\n') into prompt_result1;
+    select postllm.prompt_model(model_filename,grammar_filename,1024,n_ctx_max,n_threads,'Say hi!\n') into prompt_result2;
+    select postllm.prompt_model(model_filename,grammar_filename,1024,n_ctx_max,n_threads,'Sum of all even numbers less than 64\n') into prompt_result3;
 
     perform postllm.free_model(model_filename);
 end;

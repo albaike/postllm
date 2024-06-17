@@ -11,6 +11,8 @@ if(NOT PostgreSQL_FOUND)
     message(FATAL_ERROR "PostgreSQL not found.")
 endif()
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
+
 # Add llama.cpp/common source files directly to the project since they are PRIVATE
 set(COMMON_SOURCES
     llama.cpp/common/build-info.cpp

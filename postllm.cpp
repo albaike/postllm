@@ -281,7 +281,7 @@ Datum prompt_model(PG_FUNCTION_ARGS) {
     }
     ctx_params.n_threads = PG_GETARG_INT32(4);
     if (ctx_params.n_threads == 0) {
-        ctx_params.n_threads = get_math_cpu_count();
+        ctx_params.n_threads = cpu_get_num_math();
     }
     // ctx_params.n_threads_batch = params.n_threads_batch == -1 ? params.n_threads : params.n_threads_batch;
     ctx_params.n_threads_batch = ctx_params.n_threads;
